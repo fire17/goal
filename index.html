@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b3d1f">
+<title>גול! · פנדלים</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{--grass1:#1f8a3c;--grass2:#1a7a34;--ink:#fff;--gold:#ffd23f;--red:#ff4d5e;--sky1:#0b3d1f;--sky2:#14532d}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;background:var(--sky1);color:var(--ink);font-family:Rubik,system-ui,sans-serif;overflow:hidden;touch-action:manipulation}
+  body{display:flex;justify-content:center;background:radial-gradient(800px 400px at 50% -10%,#2f9e55 0%,transparent 60%),linear-gradient(180deg,var(--sky1),var(--sky2))}
+  .app{position:relative;width:100%;max-width:480px;height:100%;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px}
+  h1{font-size:26px;font-weight:900;letter-spacing:.5px}
+  h1 span{color:var(--gold)}
+  .score{display:flex;gap:8px}
+  .pill{background:#00000040;border:1px solid #ffffff30;border-radius:14px;padding:6px 10px;text-align:center;min-width:62px}
+  .pill b{display:block;font-size:20px;color:var(--gold)}
+  .pill small{font-size:11px;opacity:.85}
+  .kicks{display:flex;justify-content:center;gap:6px;padding:4px 0 8px}
+  .dot{width:14px;height:14px;border-radius:50%;background:#ffffff30;border:2px solid #ffffff60}
+  .dot.g{background:var(--gold);border-color:var(--gold)} .dot.m{background:var(--red);border-color:var(--red)}
+  canvas{flex:1;width:100%;display:block}
+  .msg{position:absolute;top:36%;left:50%;transform:translate(-50%,-50%) scale(.6);font-size:64px;font-weight:900;opacity:0;pointer-events:none;text-shadow:0 6px 24px #000a;transition:all .25s}
+  .msg.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  .hint{position:absolute;bottom:16px;left:0;right:0;text-align:center;font-size:15px;opacity:.9;pointer-events:none}
+  .over{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000a;backdrop-filter:blur(4px)}
+  .over.show{display:flex}
+  .card{background:linear-gradient(160deg,#1e6b3a,#0f3d22);border:2px solid var(--gold);border-radius:24px;padding:26px 22px;text-align:center;width:min(86%,340px);box-shadow:0 20px 60px #000a}
+  .card h2{font-size:30px;margin-bottom:6px}
+  .card p{font-size:17px;opacity:.95;margin-bottom:18px}
+  button{font-family:inherit;font-size:18px;font-weight:700;border:0;border-radius:16px;padding:14px 26px;background:var(--gold);color:#1b1b1b;cursor:pointer;box-shadow:0 6px 18px #ffd23f66}
+  button:active{transform:scale(.96)}
+  .ver{position:absolute;bottom:2px;left:8px;font-size:10px;opacity:.5}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>⚽ <span>גול!</span></h1>
+    <div class="score">
+      <div class="pill"><b id="goals">0</b><small>גולים</small></div>
+      <div class="pill"><b id="best">0</b><small>שיא</small></div>
+    </div>
+  </header>
+  <div class="kicks" id="kicks"></div>
+  <canvas id="c"></canvas>
+  <div class="msg" id="msg">גול!</div>
+  <div class="hint" id="hint">👆 החלק את הכדור לכיוון השער!</div>
+  <div class="over" id="over"><div class="card">
+    <h2 id="ovT">🏆 כל הכבוד!</h2>
+    <p id="ovP"></p>
+    <button id="again">שוב! ⚽</button>
+  </div></div>
+  <div class="ver">גרסה 0.1</div>
+</div>
+<script>
+const cv=document.getElementById("c"),cx=cv.getContext("2d");
+let W,H,DPR=Math.min(2,window.devicePixelRatio||1);
+function size(){const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;cx.setTransform(DPR,0,0,DPR,0,0);layout()}
+let goal,ballHome,ball,keeper,state="aim",kick=0,goals=0,results=[];
+let best=0;try{best=+localStorage.getItem("goal-best")||0}catch(e){}
+document.getElementById("best").textContent=best;
+const KICKS=5;
+function layout(){
+  const gw=Math.min(W*0.78,320),gh=gw*0.38;
+  goal={x:(W-gw)/2,y:H*0.12,w:gw,h:gh};
+  ballHome={x:W/2,y:H*0.80};
+  if(!ball||state==="aim")ball={x:ballHome.x,y:ballHome.y,r:Math.max(16,W*0.045),vx:0,vy:0,s:1,spin:0};
+  if(!keeper)keeper={x:W/2,w:gw*0.24,h:gh*0.62,dir:1,speed:1.4,dive:0};
+}
+function dots(){const k=document.getElementById("kicks");k.innerHTML="";for(let i=0;i<KICKS;i++){const d=document.createElement("div");d.className="dot"+(results[i]===1?" g":results[i]===0?" m":"");k.appendChild(d)}}
+function drawField(){
+  for(let i=0;i<10;i++){cx.fillStyle=i%2?"#1f8a3c":"#1a7a34";cx.fillRect(0,i*H/10,W,H/10)}
+  cx.strokeStyle="#ffffffcc";cx.lineWidth=3;
+  const bx=goal.x-goal.w*0.18,bw=goal.w*1.36,by=goal.y+goal.h,bh=H*0.30;
+  cx.strokeRect(bx,by,bw,bh);
+  cx.beginPath();cx.arc(W/2,ballHome.y,4,0,7);cx.fillStyle="#fff";cx.fill();
+}
+function drawGoal(){
+  const g=goal;cx.fillStyle="#ffffff18";cx.fillRect(g.x,g.y,g.w,g.h);
+  cx.strokeStyle="#ffffff40";cx.lineWidth=1;
+  for(let x=g.x;x<=g.x+g.w;x+=12){cx.beginPath();cx.moveTo(x,g.y);cx.lineTo(x,g.y+g.h);cx.stroke()}
+  for(let y=g.y;y<=g.y+g.h;y+=12){cx.beginPath();cx.moveTo(g.x,y);cx.lineTo(g.x+g.w,y);cx.stroke()}
+  cx.strokeStyle="#fff";cx.lineWidth=6;cx.lineCap="round";
+  cx.beginPath();cx.moveTo(g.x,g.y+g.h);cx.lineTo(g.x,g.y);cx.lineTo(g.x+g.w,g.y);cx.lineTo(g.x+g.w,g.y+g.h);cx.stroke();
+}
+function drawKeeper(){
+  const k=keeper,g=goal,y=g.y+g.h-k.h;
+  cx.save();cx.translate(k.x,y+k.h/2);cx.rotate(k.dive*0.9);
+  cx.fillStyle="#ff8c1a";cx.beginPath();cx.roundRect(-k.w/2,-k.h/2+k.h*0.28,k.w,k.h*0.72,10);cx.fill();
+  cx.fillStyle="#ffd9b0";cx.beginPath();cx.arc(0,-k.h/2+k.h*0.16,k.h*0.17,0,7);cx.fill();
+  cx.fillStyle="#fff";cx.beginPath();cx.arc(-k.w/2-4,-k.h*0.05,k.h*0.11,0,7);cx.arc(k.w/2+4,-k.h*0.05,k.h*0.11,0,7);cx.fill();
+  cx.restore();
+}
+function drawBall(){
+  const b=ball,r=b.r*b.s;
+  cx.fillStyle="#00000040";cx.beginPath();cx.ellipse(b.x,b.y+r*0.9,r*0.9,r*0.3,0,0,7);cx.fill();
+  cx.save();cx.translate(b.x,b.y);cx.rotate(b.spin);
+  cx.fillStyle="#fff";cx.beginPath();cx.arc(0,0,r,0,7);cx.fill();
+  cx.fillStyle="#222";for(let i=0;i<5;i++){const a=i*1.2566;cx.beginPath();cx.arc(Math.cos(a)*r*0.6,Math.sin(a)*r*0.6,r*0.22,0,7);cx.fill()}
+  cx.beginPath();cx.arc(0,0,r*0.25,0,7);cx.fill();
+  cx.restore();
+}
+let start=null;
+function pt(e){const r=cv.getBoundingClientRect(),t=e.touches?e.touches[0]||e.changedTouches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top,t:performance.now()}}
+cv.addEventListener("pointerdown",e=>{if(state!=="aim")return;start=pt(e)});
+cv.addEventListener("pointerup",e=>{
+  if(state!=="aim"||!start)return;const p=pt(e);
+  const dx=p.x-start.x,dy=p.y-start.y,dt=Math.max(60,p.t-start.t);
+  start=null;if(dy>-30)return;
+  const sp=Math.min(1.6,Math.hypot(dx,dy)/dt);
+  ball.vx=dx/dt*14;ball.vy=-Math.max(9,sp*15);state="fly";
+  document.getElementById("hint").style.opacity=0;
+  const guess=Math.random();
+  keeper.target=guess<0.4?ball.x+dx*1.2:(guess<0.7?goal.x+goal.w*0.25:goal.x+goal.w*0.75);
+});
+function flash(t,c){const m=document.getElementById("msg");m.textContent=t;m.style.color=c;m.classList.add("show");setTimeout(()=>m.classList.remove("show"),900)}
+function result(ok){
+  results[kick]=ok?1:0;kick++;if(ok){goals++;document.getElementById("goals").textContent=goals}
+  dots();flash(ok?"גול! 🎉":"הוצל! 🧤",ok?"#ffd23f":"#ff4d5e");
+  if(navigator.vibrate)navigator.vibrate(ok?[40,40,80]:120);
+  setTimeout(()=>{
+    if(kick>=KICKS){
+      if(goals>best){best=goals;try{localStorage.setItem("goal-best",best)}catch(e){}document.getElementById("best").textContent=best}
+      document.getElementById("ovT").textContent=goals>=4?"🏆 אלוף!":goals>=2?"⭐ יפה מאוד!":"💪 עוד פעם!";
+      document.getElementById("ovP").textContent="הבקעת "+goals+" מתוך "+KICKS+" פנדלים";
+      document.getElementById("over").classList.add("show");state="over";
+    }else reset();
+  },1100);
+}
+function reset(){state="aim";ball.x=ballHome.x;ball.y=ballHome.y;ball.vx=ball.vy=0;ball.s=1;keeper.dive=0;keeper.target=null;keeper.speed=1.4+kick*0.35;document.getElementById("hint").style.opacity=.9}
+document.getElementById("again").onclick=()=>{kick=0;goals=0;results=[];document.getElementById("goals").textContent=0;dots();document.getElementById("over").classList.remove("show");reset()};
+function step(){
+  const k=keeper,g=goal;
+  if(state==="aim"){k.x+=k.dir*k.speed;if(k.x<g.x+k.w/2||k.x>g.x+g.w-k.w/2)k.dir*=-1}
+  if(state==="fly"){
+    ball.x+=ball.vx;ball.y+=ball.vy;ball.vy*=0.985;ball.s=Math.max(0.55,ball.s-0.012);ball.spin+=ball.vx*0.02+0.15;
+    if(k.target!=null){k.x+=(k.target-k.x)*0.09;k.dive=Math.max(-1,Math.min(1,(k.target-W/2)/(g.w/2)))}
+    const kb={x:k.x-k.w/2-10,y:g.y+g.h-k.h,w:k.w+20,h:k.h};
+    if(ball.y<g.y+g.h){
+      const inside=ball.x>g.x+6&&ball.x<g.x+g.w-6&&ball.y>g.y;
+      const hitK=ball.x>kb.x&&ball.x<kb.x+kb.w&&ball.y>kb.y;
+      state="done";result(inside&&!hitK);
+    }else if(ball.x<-40||ball.x>W+40||ball.y<-40){state="done";result(false)}
+  }
+  cx.clearRect(0,0,W,H);drawField();drawGoal();drawKeeper();drawBall();
+  requestAnimationFrame(step);
+}
+window.addEventListener("resize",size);size();dots();step();
+</script>
+</body>
+</html>
