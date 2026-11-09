@@ -24,7 +24,7 @@
   .kicks{display:flex;justify-content:center;gap:6px;padding:4px 0 8px}
   .dot{width:14px;height:14px;border-radius:50%;background:#ffffff30;border:2px solid #ffffff60}
   .dot.g{background:var(--gold);border-color:var(--gold)} .dot.m{background:var(--red);border-color:var(--red)}
-  canvas{flex:1;width:100%;display:block}
+  canvas{flex:1;width:100%;display:block;touch-action:none;-webkit-user-select:none;user-select:none}
   .msg{position:absolute;top:36%;left:50%;transform:translate(-50%,-50%) scale(.6);font-size:64px;font-weight:900;opacity:0;pointer-events:none;text-shadow:0 6px 24px #000a;transition:all .25s}
   .msg.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
   .hint{position:absolute;bottom:16px;left:0;right:0;text-align:center;font-size:15px;opacity:.9;pointer-events:none}
@@ -56,7 +56,7 @@
     <p id="ovP"></p>
     <button id="again">שוב! ⚽</button>
   </div></div>
-  <div class="ver">גרסה 0.1</div>
+  <div class="ver">גרסה 0.2</div>
 </div>
 <script>
 const cv=document.getElementById("c"),cx=cv.getContext("2d");
@@ -92,7 +92,7 @@ function drawGoal(){
 function drawKeeper(){
   const k=keeper,g=goal,y=g.y+g.h-k.h;
   cx.save();cx.translate(k.x,y+k.h/2);cx.rotate(k.dive*0.9);
-  cx.fillStyle="#ff8c1a";cx.beginPath();cx.roundRect(-k.w/2,-k.h/2+k.h*0.28,k.w,k.h*0.72,10);cx.fill();
+  cx.fillStyle="#ff8c1a";cx.beginPath();if(cx.roundRect)cx.roundRect(-k.w/2,-k.h/2+k.h*0.28,k.w,k.h*0.72,10);else cx.rect(-k.w/2,-k.h/2+k.h*0.28,k.w,k.h*0.72);cx.fill();
   cx.fillStyle="#ffd9b0";cx.beginPath();cx.arc(0,-k.h/2+k.h*0.16,k.h*0.17,0,7);cx.fill();
   cx.fillStyle="#fff";cx.beginPath();cx.arc(-k.w/2-4,-k.h*0.05,k.h*0.11,0,7);cx.arc(k.w/2+4,-k.h*0.05,k.h*0.11,0,7);cx.fill();
   cx.restore();
@@ -108,9 +108,15 @@ function drawBall(){
 }
 let start=null;
 function pt(e){const r=cv.getBoundingClientRect(),t=e.touches?e.touches[0]||e.changedTouches[0]:e;return{x:t.clientX-r.left,y:t.clientY-r.top,t:performance.now()}}
-cv.addEventListener("pointerdown",e=>{if(state!=="aim")return;start=pt(e)});
+cv.addEventListener("pointerdown",e=>{if(state!=="aim")return;e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(er){}start=pt(e);lastMove=null});
+// a swipe that the browser/app turns into a cancel still counts as a kick (in-app WebView)
+let lastMove=null;cv.addEventListener("pointermove",e=>{if(start)lastMove=pt(e)});
+cv.addEventListener("pointercancel",e=>{if(state==="aim"&&start&&lastMove)kickFrom(lastMove);start=null;lastMove=null});
+cv.addEventListener("touchmove",e=>{e.preventDefault()},{passive:false});
 cv.addEventListener("pointerup",e=>{
-  if(state!=="aim"||!start)return;const p=pt(e);
+  if(state!=="aim"||!start)return;kickFrom(pt(e));lastMove=null;
+});
+function kickFrom(p){
   const dx=p.x-start.x,dy=p.y-start.y,dt=Math.max(60,p.t-start.t);
   start=null;if(dy>-30)return;
   const sp=Math.min(1.6,Math.hypot(dx,dy)/dt);
@@ -118,7 +124,7 @@ cv.addEventListener("pointerup",e=>{
   document.getElementById("hint").style.opacity=0;
   const guess=Math.random();
   keeper.target=guess<0.4?ball.x+dx*1.2:(guess<0.7?goal.x+goal.w*0.25:goal.x+goal.w*0.75);
-});
+}
 function flash(t,c){const m=document.getElementById("msg");m.textContent=t;m.style.color=c;m.classList.add("show");setTimeout(()=>m.classList.remove("show"),900)}
 function result(ok){
   results[kick]=ok?1:0;kick++;if(ok){goals++;document.getElementById("goals").textContent=goals}
